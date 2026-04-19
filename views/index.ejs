@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GLTF Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="app-logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><polygon points="12,2 22,8 22,16 12,22 2,16 2,8" stroke="#4fffb0" stroke-width="1.5" fill="none"/><polygon points="12,6 18,10 18,14 12,18 6,14 6,10" stroke="#4fffb0" stroke-width="1" fill="rgba(79,255,176,0.08)"/></svg>
+        <span>GLTF<b>Viewer</b></span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <button class="icon-btn" id="openUploadBtn" title="Upload model">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <form method="POST" action="/logout" style="margin:0">
+          <button type="submit" class="icon-btn logout-btn" title="Sign out">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="scene-root">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Scene Collection
+    </div>
+
+    <div class="outliner" id="outliner">
+      <% if (collections.length === 0) { %>
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <p>No models found.<br/>Click ↑ to upload.</p>
+        </div>
+      <% } %>
+
+      <% collections.forEach((collection, ci) => { %>
+        <div class="tree-collection" data-ci="<%= ci %>">
+          <div class="tree-row collection-row">
+            <span class="tree-indent level1"></span>
+            <button class="caret-btn" data-target="col-<%= ci %>">▸</button>
+            <svg class="row-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8963a" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="1"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+            <span class="row-label coll-label"><%= collection.name %></span>
+            <span class="row-count"><%= collection.objects.length %></span>
+            <div class="row-actions">
+              <button class="vis-btn active" data-ci="<%= ci %>" title="Toggle visibility">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button class="dl-btn" data-key="<%= collection.key %>" data-name="<%= collection.name %>" title="Download">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <button class="lock-btn" data-key="<%= collection.key %>" title="Set password">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="tree-children collapsed" id="col-<%= ci %>">
+            <% collection.objects.forEach((obj, oi) => { %>
+              <div class="tree-row model-row" data-ci="<%= ci %>" data-oi="<%= oi %>">
+                <span class="tree-indent level2"></span>
+                <button class="caret-btn" data-target="nodes-<%= ci %>-<%= oi %>">▸</button>
+                <svg class="row-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4fffb0" stroke-width="1.8"><polygon points="12,2 22,12 12,22 2,12"/></svg>
+                <span class="row-label model-label"><%= obj.name %></span>
+                <span class="fmt-tag <%= obj.format.toLowerCase() %>"><%= obj.format %></span>
+                <div class="row-actions">
+                  <button class="obj-vis-btn active" data-ci="<%= ci %>" data-oi="<%= oi %>" data-file="<%= obj.file %>" title="Toggle">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                  <button class="obj-focus-btn" data-ci="<%= ci %>" data-oi="<%= oi %>" data-file="<%= obj.file %>" data-name="<%= obj.name %>" title="Focus">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <% if (obj.nodes && obj.nodes.length > 0) { %>
+              <div class="tree-children collapsed node-list" id="nodes-<%= ci %>-<%= oi %>">
+                <% obj.nodes.forEach((node) => { %>
+                <div class="tree-row node-row" data-ci="<%= ci %>" data-oi="<%= oi %>" data-node-index="<%= node.index %>" data-node-name="<%= node.name %>">
+                  <span class="tree-indent level3"></span>
+                  <span class="node-dot">•</span>
+                  <svg class="row-icon node-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7a8aaa" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+                  <span class="row-label node-label" title="<%= node.name %>"><%= node.name %></span>
+                  <div class="row-actions">
+                    <button class="node-vis-btn active" data-ci="<%= ci %>" data-oi="<%= oi %>" data-node="<%= node.index %>" title="Toggle">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <% }); %>
+              </div>
+              <% } %>
+            <% }); %>
+
+            <% if (collection.objects.length === 0) { %>
+              <div class="tree-row"><span class="tree-indent level2"></span><span class="empty-row">— empty —</span></div>
+            <% } %>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="foot-btn" id="resetCamBtn">↺ Camera</button>
+      <button class="foot-btn" id="gridBtn">⊞ Grid</button>
+      <button class="foot-btn" id="wireBtn">⬡ Wire</button>
+    </div>
+  </aside>
+
+  <!-- ── VIEWER ── -->
+  <main class="viewer-wrap">
+    <canvas id="renderCanvas"></canvas>
+
+    <!-- ── FLOATING TOOLBAR ── -->
+    <div class="viewer-toolbar">
+
+      <span class="tb-label">SUN</span>
+
+      <button class="tb-btn active" id="sunToggleBtn" title="Sun On/Off">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <span>Sun</span>
+      </button>
+
+      <button class="tb-btn" id="sunRotateBtn" title="Rotate sun">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        <span>Rotate</span>
+      </button>
+
+      <div class="tb-divider"></div>
+      <span class="tb-label">LIGHT</span>
+
+      <div class="tb-slider-group">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <input type="range" id="brightnessSlider" class="tb-range" min="0.1" max="3.0" step="0.05" value="1.0"/>
+        <span id="brightnessVal" class="tb-range-val">1.0x</span>
+      </div>
+
+      <div class="tb-divider"></div>
+      <span class="tb-label">SELECT</span>
+
+      <!-- Select by Object -->
+      <button class="tb-btn" id="selectObjBtn" title="Select by Object — click any mesh to highlight it">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+          <path d="m13 13 6 6"/>
+        </svg>
+        <span>Object</span>
+      </button>
+
+      <!-- Select by Material -->
+      <button class="tb-btn" id="selectMatBtn" title="Select by Material — highlights ALL meshes sharing the same material">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+        </svg>
+        <span>Material</span>
+      </button>
+
+    </div>
+
+    <!-- ── OBJECT PROPERTIES PANEL (cyan — select by object) ── -->
+    <div class="props-panel hidden" id="propsObjPanel">
+      <div class="props-header obj-header">
+        <span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+          Object
+        </span>
+        <button class="props-close" id="closeObjPanelBtn">✕</button>
+      </div>
+      <div class="props-body">
+
+        <div class="prop-section">
+          <div class="prop-section-title">IDENTITY</div>
+          <div class="prop-row"><span class="prop-key">Name</span><span class="prop-val" id="obj_name">—</span></div>
+          <div class="prop-row"><span class="prop-key">Model</span><span class="prop-val" id="obj_model">—</span></div>
+          <div class="prop-row"><span class="prop-key">Parent chain</span><span class="prop-val" id="obj_parent">—</span></div>
+          <div class="prop-row"><span class="prop-key">UUID</span><span class="prop-val mono" id="obj_uuid">—</span></div>
+          <div class="prop-row"><span class="prop-key">Visible</span><span class="prop-val" id="obj_visible">—</span></div>
+          <div class="prop-row"><span class="prop-key">Cast Shadow</span><span class="prop-val" id="obj_shadow">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">GEOMETRY</div>
+          <div class="prop-row"><span class="prop-key">Vertices</span><span class="prop-val accent" id="obj_verts">—</span></div>
+          <div class="prop-row"><span class="prop-key">Triangles</span><span class="prop-val accent" id="obj_tris">—</span></div>
+          <div class="prop-row"><span class="prop-key">Groups</span><span class="prop-val" id="obj_groups">—</span></div>
+          <div class="prop-row"><span class="prop-key">Normals</span><span class="prop-val" id="obj_hasNorm">—</span></div>
+          <div class="prop-row"><span class="prop-key">UV</span><span class="prop-val" id="obj_hasUV">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">MATERIAL</div>
+          <div class="prop-row"><span class="prop-key">Name</span><span class="prop-val" id="obj_matname">—</span></div>
+          <div class="prop-row"><span class="prop-key">Count</span><span class="prop-val" id="obj_matcount">—</span></div>
+          <div class="prop-row"><span class="prop-key">Type</span><span class="prop-val" id="obj_mattype">—</span></div>
+          <div class="prop-row"><span class="prop-key">Roughness</span><span class="prop-val" id="obj_rough">—</span></div>
+          <div class="prop-row"><span class="prop-key">Metalness</span><span class="prop-val" id="obj_metal">—</span></div>
+          <div class="prop-row"><span class="prop-key">Texture</span><span class="prop-val" id="obj_tex">—</span></div>
+          <div class="prop-row"><span class="prop-key">Normal map</span><span class="prop-val" id="obj_bump">—</span></div>
+          <div class="prop-row"><span class="prop-key">AO map</span><span class="prop-val" id="obj_ao">—</span></div>
+          <div class="prop-row"><span class="prop-key">Transparent</span><span class="prop-val" id="obj_transp">—</span></div>
+          <div class="prop-row"><span class="prop-key">Double-sided</span><span class="prop-val" id="obj_double">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">TRANSFORM &amp; HIT</div>
+          <div class="prop-row-xyz">
+            <span class="prop-key">World pos</span>
+            <span class="xyz-group">
+              <span class="xyz-chip x">X <b id="obj_wx">—</b></span>
+              <span class="xyz-chip y">Y <b id="obj_wy">—</b></span>
+              <span class="xyz-chip z">Z <b id="obj_wz">—</b></span>
+            </span>
+          </div>
+          <div class="prop-row-xyz">
+            <span class="prop-key">Size</span>
+            <span class="xyz-group">
+              <span class="xyz-chip x">X <b id="obj_sx">—</b></span>
+              <span class="xyz-chip y">Y <b id="obj_sy">—</b></span>
+              <span class="xyz-chip z">Z <b id="obj_sz">—</b></span>
+            </span>
+          </div>
+          <div class="prop-row-xyz">
+            <span class="prop-key">Center</span>
+            <span class="xyz-group">
+              <span class="xyz-chip x">X <b id="obj_cx">—</b></span>
+              <span class="xyz-chip y">Y <b id="obj_cy">—</b></span>
+              <span class="xyz-chip z">Z <b id="obj_cz">—</b></span>
+            </span>
+          </div>
+          <div class="prop-row-xyz">
+            <span class="prop-key">Hit point</span>
+            <span class="xyz-group">
+              <span class="xyz-chip x">X <b id="obj_hx">—</b></span>
+              <span class="xyz-chip y">Y <b id="obj_hy">—</b></span>
+              <span class="xyz-chip z">Z <b id="obj_hz">—</b></span>
+            </span>
+          </div>
+          <div class="prop-row-xyz">
+            <span class="prop-key">Face normal</span>
+            <span class="xyz-group">
+              <span class="xyz-chip x">X <b id="obj_fnx">—</b></span>
+              <span class="xyz-chip y">Y <b id="obj_fny">—</b></span>
+              <span class="xyz-chip z">Z <b id="obj_fnz">—</b></span>
+            </span>
+          </div>
+          <div class="prop-row"><span class="prop-key">Ray distance</span><span class="prop-val accent" id="obj_dist">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MATERIAL PROPERTIES PANEL (amber — select by material) ── -->
+    <div class="props-panel hidden" id="propsMatPanel">
+      <div class="props-header mat-header">
+        <span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10"/></svg>
+          Material
+        </span>
+        <button class="props-close" id="closeMatPanelBtn">✕</button>
+      </div>
+      <div class="props-body">
+
+        <div class="prop-section">
+          <div class="prop-section-title">IDENTITY</div>
+          <div class="prop-row"><span class="prop-key">Name</span><span class="prop-val amber" id="mat_name">—</span></div>
+          <div class="prop-row"><span class="prop-key">UUID</span><span class="prop-val mono" id="mat_uuid">—</span></div>
+          <div class="prop-row"><span class="prop-key">Type</span><span class="prop-val" id="mat_type">—</span></div>
+          <div class="prop-row"><span class="prop-key">Color</span><span class="prop-val" id="mat_color">—</span></div>
+          <div class="prop-row"><span class="prop-key">Side</span><span class="prop-val" id="mat_side">—</span></div>
+          <div class="prop-row"><span class="prop-key">Wireframe</span><span class="prop-val" id="mat_wire">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">PBR</div>
+          <div class="prop-row"><span class="prop-key">Roughness</span><span class="prop-val" id="mat_rough">—</span></div>
+          <div class="prop-row"><span class="prop-key">Metalness</span><span class="prop-val" id="mat_metal">—</span></div>
+          <div class="prop-row"><span class="prop-key">Env intensity</span><span class="prop-val" id="mat_envint">—</span></div>
+          <div class="prop-row"><span class="prop-key">Emissive color</span><span class="prop-val" id="mat_emcol">—</span></div>
+          <div class="prop-row"><span class="prop-key">Emissive int.</span><span class="prop-val" id="mat_emiss">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">TRANSPARENCY</div>
+          <div class="prop-row"><span class="prop-key">Transparent</span><span class="prop-val" id="mat_transp">—</span></div>
+          <div class="prop-row"><span class="prop-key">Opacity</span><span class="prop-val" id="mat_opacity">—</span></div>
+          <div class="prop-row"><span class="prop-key">Depth write</span><span class="prop-val" id="mat_depthW">—</span></div>
+          <div class="prop-row"><span class="prop-key">Depth test</span><span class="prop-val" id="mat_depthT">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">TEXTURE MAPS</div>
+          <div class="prop-row"><span class="prop-key">Albedo</span><span class="prop-val" id="mat_hasMap">—</span></div>
+          <div class="prop-row"><span class="prop-key">Normal</span><span class="prop-val" id="mat_hasNorm">—</span></div>
+          <div class="prop-row"><span class="prop-key">Roughness</span><span class="prop-val" id="mat_hasRough">—</span></div>
+          <div class="prop-row"><span class="prop-key">Metalness</span><span class="prop-val" id="mat_hasMetal">—</span></div>
+          <div class="prop-row"><span class="prop-key">AO</span><span class="prop-val" id="mat_hasAO">—</span></div>
+          <div class="prop-row"><span class="prop-key">Emissive</span><span class="prop-val" id="mat_hasEmiss">—</span></div>
+          <div class="prop-row"><span class="prop-key">Bump</span><span class="prop-val" id="mat_hasBump">—</span></div>
+          <div class="prop-row"><span class="prop-key">Displacement</span><span class="prop-val" id="mat_hasDisp">—</span></div>
+        </div>
+
+        <div class="prop-section">
+          <div class="prop-section-title">SHARED BY — <span id="mat_count" style="color:var(--accent2)">0</span></div>
+          <div class="mat-obj-list" id="mat_objList"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Bottom HUD -->
+        <!-- Bottom HUD -->
+    <div class="viewer-hud">
+      <span id="modelInfoLabel" class="info-label"></span>
+      <span class="hint-label">🖱 Drag · Scroll · Right-drag pan</span>
+    </div>
+
+    <div class="welcome-screen" id="welcomeScreen">
+      <div class="welcome-box">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#4fffb0" stroke-width="1"><polygon points="12,2 22,8 22,16 12,22 2,16 2,8"/><polygon points="12,6 18,10 18,14 12,18 6,14 6,10"/></svg>
+        <p>Select a model from the outliner<br/>or <strong>drop a .gltf / .glb / .zip</strong> here</p>
+      </div>
+    </div>
+
+    <div class="loading-screen hidden" id="loadingScreen">
+      <div class="spinner"></div>
+      <p id="loadingLabel">Loading…</p>
+    </div>
+  </main>
+</div>
+
+<!-- ══ UPLOAD MODAL ══ -->
+<div class="modal-backdrop hidden" id="uploadModal">
+  <div class="modal">
+    <div class="modal-header"><span>Upload Model</span><button class="modal-close" id="closeUploadModal">✕</button></div>
+    <div class="modal-body">
+      <label class="field-label">Collection Name</label>
+      <input type="text" id="uploadCollName" class="field-input" placeholder="e.g. Bridge" value="Uploaded"/>
+      <label class="field-label" style="margin-top:14px">File <span class="muted">(.gltf · .glb · .zip)</span></label>
+      <div class="file-drop-area" id="fileDropArea">
+        <input type="file" id="fileInput" accept=".gltf,.glb,.zip" hidden/>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4fffb0" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <p id="fileDropLabel">Click or drag file here</p>
+      </div>
+      <div class="upload-progress hidden" id="uploadProgress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span id="progressLabel">Uploading…</span>
+      </div>
+      <div id="uploadMsg" class="upload-msg"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="cancelUpload">Cancel</button>
+      <button class="btn-primary" id="confirmUpload">Upload</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PASSWORD MODAL ══ -->
+<div class="modal-backdrop hidden" id="passwordModal">
+  <div class="modal modal-sm">
+    <div class="modal-header"><span>🔒 Set Download Password</span><button class="modal-close" id="closePasswordModal">✕</button></div>
+    <div class="modal-body">
+      <p class="modal-desc">Protect <strong id="pwdCollLabel"></strong> with a password.</p>
+      <label class="field-label">New Password</label>
+      <input type="password" id="pwdInput" class="field-input" placeholder="Enter password…"/>
+      <label class="field-label" style="margin-top:10px">Confirm Password</label>
+      <input type="password" id="pwdConfirm" class="field-input" placeholder="Confirm password…"/>
+      <div id="pwdMsg" class="upload-msg"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="cancelPwd">Cancel</button>
+      <button class="btn-primary" id="confirmPwd">Save Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DOWNLOAD MODAL ══ -->
+<div class="modal-backdrop hidden" id="downloadModal">
+  <div class="modal modal-sm">
+    <div class="modal-header"><span>⬇ Download Collection</span><button class="modal-close" id="closeDownloadModal">✕</button></div>
+    <div class="modal-body">
+      <p class="modal-desc">Downloading: <strong id="dlCollLabel"></strong></p>
+      <div id="dlPasswordSection">
+        <label class="field-label">🔒 Password Required</label>
+        <input type="password" id="dlPwdInput" class="field-input" placeholder="Enter password…"/>
+        <div id="dlMsg" class="upload-msg"></div>
+      </div>
+      <div id="dlNoPasswordSection" class="hidden">
+        <p style="color:#4fffb0;font-size:12px">✓ No password set. Click Download.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="cancelDownload">Cancel</button>
+      <button class="btn-primary" id="confirmDownload" disabled>Download</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>window.COLLECTIONS = <%- JSON.stringify(collections) %>;</script>
+<script src="/js/viewer.js"></script>
+<script src="/js/ui.js"></script>
+</body>
+</html>

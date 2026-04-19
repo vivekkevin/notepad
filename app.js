@@ -215,7 +215,7 @@ app.post('/download-collection', requireLogin, (req, res) => {
 
 app.get('/api/collections', requireLogin, (_req, res) => res.json(scanModels()));
 
-app.listen(PORT, () => {
-  console.log('GLTF Viewer → http://localhost:' + PORT);
-  console.log('Login credentials from .env → user: ' + (process.env.APP_USERNAME || 'admin'));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`GLTF Viewer → http://0.0.0.0:${PORT}`);
+  console.log(`Login credentials from .env → user: ${process.env.APP_USERNAME || 'admin'}`);
 });

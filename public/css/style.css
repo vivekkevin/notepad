@@ -814,3 +814,94 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 /* Two panels can coexist side-by-side at different top positions */
 #propsObjPanel { top: 12px; right: 12px; }
 #propsMatPanel { top: 12px; right: 12px; }
+
+/* ── Logout button ─────────────────────────────────────── */
+.logout-btn:hover {
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+
+/* ══ PASSWORD UPLOAD FIELD ══════════════════════════════ */
+.upload-pw-hint {
+  font-size: 10px;
+  color: #e8963a;
+  margin-top: 5px;
+  padding: 5px 8px;
+  background: rgba(232,150,58,0.08);
+  border-radius: 4px;
+  border-left: 2px solid #e8963a;
+}
+
+/* Eye toggle button inside password fields */
+.pw-eye-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.pw-eye-btn:hover { color: var(--text); }
+
+/* Password status icon in outliner row */
+.pw-status-icon {
+  display: flex;
+  align-items: center;
+  width: 18px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Delete button in row */
+.del-coll-btn, .del-model-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2a3040;
+  transition: color 0.15s, background 0.15s;
+}
+.del-coll-btn:hover, .del-model-btn:hover {
+  color: var(--danger);
+  background: rgba(255,79,110,0.1);
+}
+
+/* Delete modal warning box */
+.delete-warning-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,79,110,0.08);
+  border: 1px solid rgba(255,79,110,0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+/* Danger button */
+.btn-danger {
+  background: var(--danger);
+  border: none;
+  color: #fff;
+  padding: 7px 18px;
+  border-radius: 5px;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-danger:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-danger:hover:not(:disabled) { opacity: 0.85; }

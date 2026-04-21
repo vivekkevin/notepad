@@ -14,11 +14,9 @@ const PORT = process.env.PORT || 3000;
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// ── Body parsers ───────────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Session ────────────────────────────────────────────────
 app.use(session({
   secret:            process.env.SESSION_SECRET || 'change_me_in_env',
   resave:            false,
@@ -26,33 +24,53 @@ app.use(session({
   cookie: { httpOnly: true, maxAge: 8 * 60 * 60 * 1000 }
 }));
 
-// ── PUBLIC static files (CSS/JS/favicon) ─────────────────
-// These must be served BEFORE requireLogin so the login page
-// itself can load style.css, viewer.js etc.
-// /models is NOT included here — it stays protected below.
+// ── Public static (CSS/JS/fonts) — served before auth ─────
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Auth guard ────────────────────────────────────────────
 function requireLogin(req, res, next) {
   if (req.session && req.session.loggedIn) return next();
-  if (req.path === '/login') return next();
-  // API calls → 401 JSON instead of redirect
-  if (req.path.startsWith('/api/') ||
-      req.path.startsWith('/upload') ||
-      req.path.startsWith('/download') ||
-      req.path.startsWith('/set-password') ||
-      req.path.startsWith('/verify-password')) {
+  if (req.xhr || req.path.startsWith('/api/') || req.headers['content-type'] === 'application/json') {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   return res.redirect('/login');
 }
 
-// ── PROTECTED: /models static (AFTER auth) ────────────────
-// Placed after requireLogin so model files need a valid session
+// /models protected — needs valid session
 app.use('/models', requireLogin, express.static(path.join(__dirname, 'models')));
 
-// ── In-memory download password store ─────────────────────
-const downloadPasswords = {};
+// ══════════════════════════════════════════════════════════
+// ── COLLECTION PASSWORD STORE
+// Persisted to disk so passwords survive server restarts
+// ══════════════════════════════════════════════════════════
+
+const PASSWORDS_FILE = path.join(__dirname, 'collection-passwords.json');
+
+function loadPasswords() {
+  try {
+    if (fs.existsSync(PASSWORDS_FILE)) {
+      return JSON.parse(fs.readFileSync(PASSWORDS_FILE, 'utf8'));
+    }
+  } catch (e) { /* ignore */ }
+  return {};
+}
+
+function savePasswords(store) {
+  fs.writeFileSync(PASSWORDS_FILE, JSON.stringify(store, null, 2));
+}
+
+// In-memory store, synced to disk
+let collectionPasswords = loadPasswords();
+
+function hashPassword(pw) {
+  return crypto.createHash('sha256').update(pw).digest('hex');
+}
+
+function verifyCollectionPassword(collectionKey, password) {
+  const stored = collectionPasswords[collectionKey];
+  if (!stored) return { valid: false, noPassword: true };
+  return { valid: hashPassword(password || '') === stored, noPassword: false };
+}
 
 // ── Multer ────────────────────────────────────────────────
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -67,7 +85,7 @@ const upload = multer({
   fileFilter: (_req, file, cb) => cb(null, /\.(zip|gltf|glb)$/i.test(file.originalname))
 });
 
-// ── Parse GLTF JSON → node names ──────────────────────────
+// ── Parse GLTF nodes ──────────────────────────────────────
 function parseGLTFNodes(gltfFilePath) {
   try {
     const raw      = fs.readFileSync(gltfFilePath, 'utf8');
@@ -82,7 +100,7 @@ function parseGLTFNodes(gltfFilePath) {
   } catch (e) { return []; }
 }
 
-// ── Scan /models directory ────────────────────────────────
+// ── Scan /models ──────────────────────────────────────────
 function scanModels() {
   const modelsDir = path.join(__dirname, 'models');
   if (!fs.existsSync(modelsDir)) { fs.mkdirSync(modelsDir, { recursive: true }); return []; }
@@ -119,12 +137,28 @@ function scanModels() {
         }
       });
 
-      return { key: collDir.name, name: collDir.name, objects };
+      // Include whether this collection has a password set
+      return {
+        key:         collDir.name,
+        name:        collDir.name,
+        objects,
+        hasPassword: !!collectionPasswords[collDir.name]
+      };
     });
 }
 
+// ── Recursive folder delete helper ───────────────────────
+function deleteFolderRecursive(folderPath) {
+  if (!fs.existsSync(folderPath)) return;
+  fs.readdirSync(folderPath).forEach(file => {
+    const cur = path.join(folderPath, file);
+    fs.lstatSync(cur).isDirectory() ? deleteFolderRecursive(cur) : fs.unlinkSync(cur);
+  });
+  fs.rmdirSync(folderPath);
+}
+
 // ══════════════════════════════════════════════════════════
-// ── LOGIN ROUTES (no auth required)
+// ── LOGIN ROUTES
 // ══════════════════════════════════════════════════════════
 
 app.get('/login', (req, res) => {
@@ -134,10 +168,8 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  const validUser = process.env.APP_USERNAME || 'admin';
-  const validPass = process.env.APP_PASSWORD || 'password';
-
-  if (username === validUser && password === validPass) {
+  if (username === (process.env.APP_USERNAME || 'admin') &&
+      password === (process.env.APP_PASSWORD || 'password')) {
     req.session.loggedIn = true;
     req.session.username = username;
     return res.redirect('/');
@@ -157,11 +189,40 @@ app.get('/', requireLogin, (_req, res) => {
   res.render('index', { collections: scanModels() });
 });
 
+// ── UPLOAD — must include a collection password ───────────
+// Password is set once at upload time and cannot be changed
+// without knowing the current password.
 app.post('/upload', requireLogin, upload.single('modelFile'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file received' });
+
   const collectionName = (req.body.collectionName || 'Uploaded').replace(/[^a-zA-Z0-9_\- ]/g, '');
+  const uploadPassword = (req.body.uploadPassword || '').trim();
+
+  if (!uploadPassword) {
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'A collection password is required for upload.' });
+  }
+
   const destColl = path.join(__dirname, 'models', collectionName);
+  const collectionExists = fs.existsSync(destColl);
+
+  // If collection already exists and has a password, verify it
+  if (collectionExists && collectionPasswords[collectionName]) {
+    const check = verifyCollectionPassword(collectionName, uploadPassword);
+    if (!check.valid) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(403).json({ error: 'Wrong password for existing collection "' + collectionName + '".' });
+    }
+  }
+
+  // New collection — set the password
+  if (!collectionExists || !collectionPasswords[collectionName]) {
+    collectionPasswords[collectionName] = hashPassword(uploadPassword);
+    savePasswords(collectionPasswords);
+  }
+
   if (!fs.existsSync(destColl)) fs.mkdirSync(destColl, { recursive: true });
+
   try {
     if (/\.zip$/i.test(req.file.originalname)) {
       const zip  = new AdmZip(req.file.path);
@@ -174,48 +235,111 @@ app.post('/upload', requireLogin, upload.single('modelFile'), (req, res) => {
       fs.renameSync(req.file.path, path.join(dest, req.file.originalname));
     }
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.json({ success: true, message: 'Added to collection "' + collectionName + '"' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json({ success: true, message: 'Uploaded to "' + collectionName + '" — protected by your password.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/set-password', requireLogin, (req, res) => {
+// ── VERIFY collection password (for download/delete UI) ───
+app.post('/verify-collection-password', requireLogin, (req, res) => {
   const { collectionKey, password } = req.body;
-  if (!collectionKey || !password) return res.status(400).json({ error: 'Missing fields' });
-  downloadPasswords[collectionKey] = crypto.createHash('sha256').update(password).digest('hex');
-  res.json({ success: true });
+  if (!collectionKey) return res.status(400).json({ error: 'Missing collectionKey' });
+  const result = verifyCollectionPassword(collectionKey, password);
+  res.json(result);
 });
 
-app.post('/verify-password', requireLogin, (req, res) => {
-  const { collectionKey, password } = req.body;
-  const stored = downloadPasswords[collectionKey];
-  if (!stored) return res.json({ valid: true, noPassword: true });
-  const hash = crypto.createHash('sha256').update(password || '').digest('hex');
-  res.json({ valid: hash === stored });
-});
-
+// ── DOWNLOAD — requires collection password ───────────────
 app.post('/download-collection', requireLogin, (req, res) => {
   const { collectionKey, password } = req.body;
-  const stored = downloadPasswords[collectionKey];
-  if (stored) {
-    const hash = crypto.createHash('sha256').update(password || '').digest('hex');
-    if (hash !== stored) return res.status(403).json({ error: 'Wrong password' });
+
+  const check = verifyCollectionPassword(collectionKey, password);
+  if (check.noPassword) {
+    return res.status(403).json({ error: 'This collection has no password set. Cannot download.' });
   }
+  if (!check.valid) {
+    return res.status(403).json({ error: 'Wrong password.' });
+  }
+
   const collPath = path.join(__dirname, 'models', collectionKey);
-  if (!fs.existsSync(collPath)) return res.status(404).json({ error: 'Not found' });
-  const zip = new AdmZip();
-  zip.addLocalFolder(collPath, collectionKey);
-  const buf = zip.toBuffer();
-  res.set({
-    'Content-Type':        'application/zip',
-    'Content-Disposition': 'attachment; filename="' + collectionKey + '.zip"',
-    'Content-Length':      buf.length
-  });
-  res.send(buf);
+  if (!fs.existsSync(collPath)) return res.status(404).json({ error: 'Collection not found.' });
+
+  try {
+    const zip = new AdmZip();
+    zip.addLocalFolder(collPath, collectionKey);
+    const buf = zip.toBuffer();
+    res.set({
+      'Content-Type':        'application/zip',
+      'Content-Disposition': 'attachment; filename="' + collectionKey + '.zip"',
+      'Content-Length':      buf.length
+    });
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE collection — requires collection password ──────
+app.delete('/delete-collection', requireLogin, (req, res) => {
+  const { collectionKey, password } = req.body;
+
+  if (!collectionKey) return res.status(400).json({ error: 'Missing collectionKey' });
+
+  const check = verifyCollectionPassword(collectionKey, password);
+  if (check.noPassword) {
+    return res.status(403).json({ error: 'No password set for this collection.' });
+  }
+  if (!check.valid) {
+    return res.status(403).json({ error: 'Wrong password.' });
+  }
+
+  const collPath = path.join(__dirname, 'models', collectionKey);
+  if (!fs.existsSync(collPath)) return res.status(404).json({ error: 'Collection not found.' });
+
+  try {
+    deleteFolderRecursive(collPath);
+    // Remove password entry
+    delete collectionPasswords[collectionKey];
+    savePasswords(collectionPasswords);
+    res.json({ success: true, message: 'Collection "' + collectionKey + '" deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE single model object inside a collection ────────
+app.delete('/delete-model', requireLogin, (req, res) => {
+  const { collectionKey, modelName, password } = req.body;
+
+  if (!collectionKey || !modelName) return res.status(400).json({ error: 'Missing fields' });
+
+  const check = verifyCollectionPassword(collectionKey, password);
+  if (check.noPassword) {
+    return res.status(403).json({ error: 'No password set for this collection.' });
+  }
+  if (!check.valid) {
+    return res.status(403).json({ error: 'Wrong password.' });
+  }
+
+  const modelPath = path.join(__dirname, 'models', collectionKey, modelName);
+  if (!fs.existsSync(modelPath)) return res.status(404).json({ error: 'Model not found.' });
+
+  try {
+    const stat = fs.lstatSync(modelPath);
+    if (stat.isDirectory()) {
+      deleteFolderRecursive(modelPath);
+    } else {
+      fs.unlinkSync(modelPath);
+    }
+    res.json({ success: true, message: 'Model "' + modelName + '" deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/collections', requireLogin, (_req, res) => res.json(scanModels()));
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`GLTF Viewer → http://0.0.0.0:${PORT}`);
-  console.log(`Login credentials from .env → user: ${process.env.APP_USERNAME || 'admin'}`);
+app.listen(PORT, () => {
+  console.log('GLTF Viewer → http://localhost:' + PORT);
+  console.log('App login: ' + (process.env.APP_USERNAME || 'admin'));
 });

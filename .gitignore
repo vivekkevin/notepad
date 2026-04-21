@@ -3,3 +3,5 @@ models/
 *.bin
 *.gltf
 *.png
+collection-passwords.json
+uploads/

@@ -376,6 +376,13 @@ app.post('/notepad/auth', (req, res) => {
 // Notepad session guard
 function requireNotepadAuth(req, res, next) {
   if (req.session && req.session.notepadAuth) return next();
+  
+  // If it's an API call (JSON request or AJAX), return JSON error
+  if (req.xhr || req.path.startsWith('/notepad/notes') || req.headers.accept?.includes('application/json')) {
+    return res.status(401).json({ error: 'Session expired. Please login again.' });
+  }
+  
+  // Otherwise redirect to notepad login page
   res.redirect('/notepad');
 }
 

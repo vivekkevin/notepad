@@ -358,6 +358,17 @@ allNotes.forEach(note => {
   }
 });
 
+// ── Global fetch wrapper to handle session expiration ─────────
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    toast('Session expired. Redirecting to login...', 'error', 3000);
+    setTimeout(() => window.location.href = '/notepad', 2000);
+    throw new Error('Session expired');
+  }
+  return res;
+}
+
 // ── Toast ──────────────────────────────────────────────────
 function toast(msg, type = 'ok', ms = 2200) {
   const t = document.createElement('div');
@@ -443,7 +454,7 @@ async function saveNote() {
   try {
     const method = currentNoteId ? 'PUT' : 'POST';
     const url    = currentNoteId ? '/notepad/notes/' + currentNoteId : '/notepad/notes';
-    const res    = await fetch(url, {
+    const res    = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -453,11 +464,14 @@ async function saveNote() {
 
     const note = data.note;
     if (!currentNoteId) {
-      // New note — add card to grid
+      // New note — add card to grid and update map
       currentNoteId = note._id;
+      notesMap.set(note._id, note);
       addNoteCard(note);
       document.getElementById('emptyState') && document.getElementById('emptyState').remove();
     } else {
+      // Update existing note in map
+      notesMap.set(note._id, note);
       updateNoteCard(note);
     }
     updateSaveStatus('saved', 'Saved ' + new Date().toLocaleTimeString());
@@ -471,20 +485,27 @@ async function saveNote() {
 async function togglePin(e, id, btn) {
   e.stopPropagation();
   const card   = btn.closest('.note-card');
-  const pinned = card.dataset.pinned !== 'true';
+  const note   = notesMap.get(id);
+  if (!note) return;
+  
+  const pinned = !note.pinned;
   try {
-    const res  = await fetch('/notepad/notes/' + id, {
+    const res  = await apiFetch('/notepad/notes/' + id, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        title:   card.dataset.title,
-        content: card.dataset.content.replace(/\\n/g,'\n'),
-        color:   card.dataset.color,
+        title:   note.title,
+        content: note.content,
+        color:   note.color,
         pinned
       })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
+    
+    // Update map and UI
+    note.pinned = pinned;
+    notesMap.set(id, note);
     card.dataset.pinned = pinned;
     btn.classList.toggle('pinned-active', pinned);
     card.classList.toggle('pinned', pinned);
@@ -498,9 +519,12 @@ async function deleteNote(e, id) {
   e.stopPropagation();
   if (!confirm('Delete this note? This cannot be undone.')) return;
   try {
-    const res  = await fetch('/notepad/notes/' + id, { method: 'DELETE' });
+    const res  = await apiFetch('/notepad/notes/' + id, { method: 'DELETE' });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
+    
+    // Remove from map and DOM
+    notesMap.delete(id);
     document.querySelector('.note-card[data-id="' + id + '"]').remove();
     if (currentNoteId === id) {
       document.getElementById('editorPanel').classList.add('hidden');

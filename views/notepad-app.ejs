@@ -270,8 +270,6 @@
     <% notes.forEach(note => { %>
     <div class="note-card <%= note.pinned ? 'pinned' : '' %>"
          data-id="<%= note._id %>"
-         data-title="<%= note.title.replace(/"/g,'&quot;') %>"
-         data-content="<%= note.content.replace(/"/g,'&quot;').replace(/\n/g,'\\n') %>"
          data-color="<%= note.color %>"
          data-pinned="<%= note.pinned %>"
          style="--card-color: <%= note.color %>;"
@@ -281,10 +279,10 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
       </span>
       <% } %>
-      <div class="note-title"><%= note.title || 'Untitled' %></div>
-      <div class="note-preview"><%= note.content %></div>
+      <div class="note-title"></div>
+      <div class="note-preview"></div>
       <div class="note-footer">
-        <span class="note-date"><%= new Date(note.updatedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) %></span>
+        <span class="note-date"></span>
         <div class="note-actions">
           <button class="note-act-btn pin <%= note.pinned ? 'pinned-active' : '' %>" onclick="togglePin(event,'<%= note._id %>',this)" title="<%= note.pinned ? 'Unpin' : 'Pin' %>">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="<%= note.pinned ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -348,6 +346,18 @@ let currentPinned   = false;
 let saveTimer       = null;
 let allNotes        = <%- JSON.stringify(notes) %>;
 
+// ── Populate cards from clean JSON data ──────────────────────
+const notesMap = new Map();
+allNotes.forEach(note => {
+  notesMap.set(note._id, note);
+  const card = document.querySelector(`.note-card[data-id="${note._id}"]`);
+  if (card) {
+    card.querySelector('.note-title').textContent = note.title || 'Untitled';
+    card.querySelector('.note-preview').textContent = note.content;
+    card.querySelector('.note-date').textContent = new Date(note.updatedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  }
+});
+
 // ── Toast ──────────────────────────────────────────────────
 function toast(msg, type = 'ok', ms = 2200) {
   const t = document.createElement('div');
@@ -361,9 +371,13 @@ function toast(msg, type = 'ok', ms = 2200) {
 document.getElementById('searchInput').addEventListener('input', function() {
   const q = this.value.toLowerCase();
   document.querySelectorAll('.note-card').forEach(card => {
-    const title   = card.dataset.title.toLowerCase();
-    const content = card.dataset.content.toLowerCase();
-    card.style.display = (title.includes(q) || content.includes(q)) ? '' : 'none';
+    const noteId = card.dataset.id;
+    const note = notesMap.get(noteId);
+    if (note) {
+      const title = (note.title || '').toLowerCase();
+      const content = (note.content || '').toLowerCase();
+      card.style.display = (title.includes(q) || content.includes(q)) ? '' : 'none';
+    }
   });
 });
 
@@ -383,11 +397,15 @@ document.getElementById('newNoteBtn').addEventListener('click', () => {
 
 // ── Open existing note ─────────────────────────────────────
 function openNote(card) {
-  currentNoteId = card.dataset.id;
-  currentColor  = card.dataset.color || '#1a1e28';
-  currentPinned = card.dataset.pinned === 'true';
-  document.getElementById('editorTitle').value   = card.dataset.title;
-  document.getElementById('editorContent').value = card.dataset.content.replace(/\\n/g, '\n');
+  const noteId = card.dataset.id;
+  const note = notesMap.get(noteId);
+  if (!note) return;
+  
+  currentNoteId = noteId;
+  currentColor  = note.color || '#1a1e28';
+  currentPinned = note.pinned || false;
+  document.getElementById('editorTitle').value   = note.title || '';
+  document.getElementById('editorContent').value = note.content || '';
   document.getElementById('editorPanel').classList.remove('hidden');
   setActiveSwatch(currentColor);
   updateSaveStatus('saved', 'Saved');

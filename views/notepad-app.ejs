@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Notepad</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d0f14;
+      --surface: #13161d;
+      --surface2: #1a1e28;
+      --border:  #252a38;
+      --accent:  #4fffb0;
+      --accent2: #00c8ff;
+      --amber:   #e8963a;
+      --text:    #d4dbe8;
+      --muted:   #5a6480;
+      --danger:  #ff4f6e;
+      --mono:    'IBM Plex Mono', monospace;
+      --sans:    'Inter', sans-serif;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; }
+
+    /* ── Top bar ── */
+    .topbar {
+      height: 52px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; gap: 14px;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 10px; }
+    .topbar-logo {
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent);
+    }
+    .note-count {
+      font-size: 11px; color: var(--muted);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 2px 10px;
+    }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+
+    .btn-icon {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; border-radius: 6px;
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; font-family: var(--mono);
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-new {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--accent); border: none; color: #000;
+      font-family: var(--mono); font-size: 11px; font-weight: 700;
+      padding: 6px 14px; border-radius: 6px; cursor: pointer;
+      letter-spacing: 0.04em; transition: opacity 0.15s;
+    }
+    .btn-new:hover { opacity: 0.88; }
+
+    .search-wrap {
+      position: relative; flex: 1; max-width: 260px;
+    }
+    .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+    .search-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px 6px 30px; border-radius: 6px;
+      font-family: var(--mono); font-size: 11px; outline: none; transition: border-color 0.15s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--muted); }
+
+    /* ── Main layout ── */
+    .main { display: flex; height: calc(100vh - 52px); }
+
+    /* ── Notes grid ── */
+    .notes-grid {
+      flex: 1; padding: 20px;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 14px;
+      align-content: start;
+    }
+    .notes-grid::-webkit-scrollbar { width: 4px; }
+    .notes-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .empty-notes {
+      grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .empty-notes svg { opacity: 0.3; margin-bottom: 14px; }
+    .empty-notes p { font-size: 13px; line-height: 1.7; }
+
+    /* ── Note card ── */
+    .note-card {
+      background: var(--card-color, var(--surface2));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px; padding: 14px;
+      cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+      position: relative; min-height: 120px;
+      display: flex; flex-direction: column;
+      animation: cardIn 0.2s ease;
+    }
+    @keyframes cardIn { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:none; } }
+    .note-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .note-card.pinned { border-color: rgba(79,255,176,0.2); }
+
+    .note-pin {
+      position: absolute; top: 10px; right: 10px; color: var(--accent); opacity: 0.7;
+    }
+    .note-title {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      margin-bottom: 8px; padding-right: 20px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .note-preview {
+      font-size: 11.5px; color: var(--muted); line-height: 1.6;
+      flex: 1; overflow: hidden;
+      display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+    }
+    .note-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 12px; padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .note-date { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+    .note-actions { display: flex; gap: 4px; }
+    .note-act-btn {
+      background: none; border: none; cursor: pointer; color: var(--muted);
+      width: 22px; height: 22px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.12s, background 0.12s;
+    }
+    .note-act-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .note-act-btn.del:hover { color: var(--danger); background: rgba(255,79,110,0.1); }
+    .note-act-btn.pin:hover { color: var(--accent); }
+    .note-act-btn.pinned-active { color: var(--accent); }
+
+    /* ── Editor panel ── */
+    .editor-panel {
+      width: 380px; min-width: 320px; max-width: 480px;
+      background: var(--surface); border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      transition: transform 0.25s ease;
+    }
+    .editor-panel.hidden { display: none; }
+
+    .editor-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px 10px; border-bottom: 1px solid var(--border);
+      gap: 8px; flex-shrink: 0;
+    }
+    .editor-title-input {
+      flex: 1; background: none; border: none; color: var(--text);
+      font-family: var(--mono); font-size: 13px; font-weight: 700;
+      outline: none; padding: 4px 0;
+    }
+    .editor-title-input::placeholder { color: var(--muted); }
+
+    .editor-toolbar {
+      display: flex; align-items: center; gap: 4px; padding: 8px 14px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
+    }
+    .ed-btn {
+      background: none; border: 1px solid transparent; color: var(--muted);
+      padding: 3px 8px; border-radius: 4px; cursor: pointer;
+      font-family: var(--mono); font-size: 11px; transition: all 0.12s;
+    }
+    .ed-btn:hover { border-color: var(--border); color: var(--text); }
+
+    /* Color swatches */
+    .color-swatches { display: flex; gap: 5px; margin-left: 4px; }
+    .swatch {
+      width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
+      border: 2px solid transparent; transition: transform 0.12s;
+    }
+    .swatch:hover { transform: scale(1.2); }
+    .swatch.active { border-color: var(--text); }
+
+    .editor-body {
+      flex: 1; position: relative; overflow: hidden;
+    }
+    .editor-textarea {
+      width: 100%; height: 100%; background: none; border: none;
+      color: var(--text); font-family: var(--sans); font-size: 13px;
+      line-height: 1.75; padding: 16px; outline: none; resize: none;
+      overflow-y: auto;
+    }
+    .editor-textarea::-webkit-scrollbar { width: 4px; }
+    .editor-textarea::-webkit-scrollbar-thumb { background: var(--border); }
+    .editor-textarea::placeholder { color: var(--muted); }
+
+    .editor-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0;
+      font-size: 10px; color: var(--muted); font-family: var(--mono);
+    }
+
+    .save-status { display: flex; align-items: center; gap: 5px; }
+    .save-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .save-dot.saved   { background: var(--accent); }
+    .save-dot.saving  { background: var(--amber); animation: blink 0.8s infinite; }
+    .save-dot.unsaved { background: var(--amber); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 18px; font-size: 12px;
+      font-family: var(--mono); color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      animation: toastIn 0.2s ease; z-index: 999;
+    }
+    .toast.ok    { border-color: rgba(79,255,176,0.4); color: var(--accent); }
+    .toast.error { border-color: rgba(255,79,110,0.4); color: var(--danger); }
+    @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="topbar-logo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      Notepad
+    </div>
+    <span class="note-count" id="noteCount"><%= notes.length %> note<%= notes.length !== 1 ? 's' : '' %></span>
+  </div>
+  <div class="search-wrap">
+    <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="search-input" id="searchInput" placeholder="Search notes…"/>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-new" id="newNoteBtn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Note
+    </button>
+    <form method="POST" action="/notepad/logout" style="margin:0">
+      <button type="submit" class="btn-icon" title="Lock notepad">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      </button>
+    </form>
+    <a href="/" class="btn-icon" title="Back to viewer">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </a>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Notes grid -->
+  <div class="notes-grid" id="notesGrid">
+    <% if (notes.length === 0) { %>
+    <div class="empty-notes" id="emptyState">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <p>No notes yet.<br/>Click <strong>New Note</strong> to get started.</p>
+    </div>
+    <% } %>
+
+    <% notes.forEach(note => { %>
+    <div class="note-card <%= note.pinned ? 'pinned' : '' %>"
+         data-id="<%= note._id %>"
+         data-title="<%= note.title.replace(/"/g,'&quot;') %>"
+         data-content="<%= note.content.replace(/"/g,'&quot;').replace(/\n/g,'\\n') %>"
+         data-color="<%= note.color %>"
+         data-pinned="<%= note.pinned %>"
+         style="--card-color: <%= note.color %>;"
+         onclick="openNote(this)">
+      <% if (note.pinned) { %>
+      <span class="note-pin">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      </span>
+      <% } %>
+      <div class="note-title"><%= note.title || 'Untitled' %></div>
+      <div class="note-preview"><%= note.content %></div>
+      <div class="note-footer">
+        <span class="note-date"><%= new Date(note.updatedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) %></span>
+        <div class="note-actions">
+          <button class="note-act-btn pin <%= note.pinned ? 'pinned-active' : '' %>" onclick="togglePin(event,'<%= note._id %>',this)" title="<%= note.pinned ? 'Unpin' : 'Pin' %>">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="<%= note.pinned ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </button>
+          <button class="note-act-btn del" onclick="deleteNote(event,'<%= note._id %>')" title="Delete">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <% }); %>
+  </div>
+
+  <!-- Editor panel -->
+  <div class="editor-panel hidden" id="editorPanel">
+    <div class="editor-topbar">
+      <input type="text" class="editor-title-input" id="editorTitle" placeholder="Note title…"/>
+      <button class="btn-icon" id="closeEditorBtn" title="Close editor">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="editor-toolbar">
+      <button class="ed-btn" onclick="insertText('**','**')"><b>B</b></button>
+      <button class="ed-btn" onclick="insertText('*','*')"><i>I</i></button>
+      <button class="ed-btn" onclick="insertText('`','`')">` `</button>
+      <button class="ed-btn" onclick="insertLine('# ')">H1</button>
+      <button class="ed-btn" onclick="insertLine('## ')">H2</button>
+      <button class="ed-btn" onclick="insertLine('- ')">List</button>
+      <button class="ed-btn" onclick="insertLine('- [ ] ')">☐</button>
+      <div class="color-swatches" id="colorSwatches">
+        <div class="swatch active" style="background:#1a1e28" data-color="#1a1e28" onclick="setColor(this,'#1a1e28')" title="Default"></div>
+        <div class="swatch" style="background:#1a2a1e" data-color="#1a2a1e" onclick="setColor(this,'#1a2a1e')" title="Green"></div>
+        <div class="swatch" style="background:#2a1e1a" data-color="#2a1e1a" onclick="setColor(this,'#2a1e1a')" title="Red"></div>
+        <div class="swatch" style="background:#1e1e2a" data-color="#1e1e2a" onclick="setColor(this,'#1e1e2a')" title="Blue"></div>
+        <div class="swatch" style="background:#2a251a" data-color="#2a251a" onclick="setColor(this,'#2a251a')" title="Amber"></div>
+        <div class="swatch" style="background:#241a2a" data-color="#241a2a" onclick="setColor(this,'#241a2a')" title="Purple"></div>
+      </div>
+    </div>
+
+    <div class="editor-body">
+      <textarea class="editor-textarea" id="editorContent" placeholder="Start writing…"></textarea>
+    </div>
+
+    <div class="editor-footer">
+      <div class="save-status">
+        <div class="save-dot" id="saveDot"></div>
+        <span id="saveStatus">—</span>
+      </div>
+      <span id="wordCount">0 words</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────
+let currentNoteId   = null;
+let currentColor    = '#1a1e28';
+let currentPinned   = false;
+let saveTimer       = null;
+let allNotes        = <%- JSON.stringify(notes) %>;
+
+// ── Toast ──────────────────────────────────────────────────
+function toast(msg, type = 'ok', ms = 2200) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+// ── Search ─────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.note-card').forEach(card => {
+    const title   = card.dataset.title.toLowerCase();
+    const content = card.dataset.content.toLowerCase();
+    card.style.display = (title.includes(q) || content.includes(q)) ? '' : 'none';
+  });
+});
+
+// ── New note ───────────────────────────────────────────────
+document.getElementById('newNoteBtn').addEventListener('click', () => {
+  currentNoteId = null;
+  currentColor  = '#1a1e28';
+  currentPinned = false;
+  document.getElementById('editorTitle').value   = '';
+  document.getElementById('editorContent').value = '';
+  document.getElementById('editorPanel').classList.remove('hidden');
+  document.getElementById('editorTitle').focus();
+  setActiveSwatch('#1a1e28');
+  updateSaveStatus('unsaved', 'New note');
+  updateWordCount('');
+});
+
+// ── Open existing note ─────────────────────────────────────
+function openNote(card) {
+  currentNoteId = card.dataset.id;
+  currentColor  = card.dataset.color || '#1a1e28';
+  currentPinned = card.dataset.pinned === 'true';
+  document.getElementById('editorTitle').value   = card.dataset.title;
+  document.getElementById('editorContent').value = card.dataset.content.replace(/\\n/g, '\n');
+  document.getElementById('editorPanel').classList.remove('hidden');
+  setActiveSwatch(currentColor);
+  updateSaveStatus('saved', 'Saved');
+  updateWordCount(document.getElementById('editorContent').value);
+  document.getElementById('editorContent').focus();
+}
+
+// ── Close editor ───────────────────────────────────────────
+document.getElementById('closeEditorBtn').addEventListener('click', () => {
+  document.getElementById('editorPanel').classList.add('hidden');
+  currentNoteId = null;
+});
+
+// ── Auto-save on typing (600ms debounce) ──────────────────
+['editorTitle','editorContent'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    clearTimeout(saveTimer);
+    updateSaveStatus('unsaved', 'Unsaved…');
+    saveTimer = setTimeout(saveNote, 600);
+    if (id === 'editorContent') updateWordCount(document.getElementById('editorContent').value);
+  });
+});
+
+// ── Save note ──────────────────────────────────────────────
+async function saveNote() {
+  const title   = document.getElementById('editorTitle').value.trim() || 'Untitled';
+  const content = document.getElementById('editorContent').value;
+
+  if (!title && !content) return;
+
+  updateSaveStatus('saving', 'Saving…');
+
+  const body = { title, content, color: currentColor, pinned: currentPinned };
+
+  try {
+    const method = currentNoteId ? 'PUT' : 'POST';
+    const url    = currentNoteId ? '/notepad/notes/' + currentNoteId : '/notepad/notes';
+    const res    = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    const note = data.note;
+    if (!currentNoteId) {
+      // New note — add card to grid
+      currentNoteId = note._id;
+      addNoteCard(note);
+      document.getElementById('emptyState') && document.getElementById('emptyState').remove();
+    } else {
+      updateNoteCard(note);
+    }
+    updateSaveStatus('saved', 'Saved ' + new Date().toLocaleTimeString());
+  } catch (err) {
+    updateSaveStatus('unsaved', 'Error: ' + err.message);
+    toast('Save failed: ' + err.message, 'error');
+  }
+}
+
+// ── Pin toggle ─────────────────────────────────────────────
+async function togglePin(e, id, btn) {
+  e.stopPropagation();
+  const card   = btn.closest('.note-card');
+  const pinned = card.dataset.pinned !== 'true';
+  try {
+    const res  = await fetch('/notepad/notes/' + id, {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        title:   card.dataset.title,
+        content: card.dataset.content.replace(/\\n/g,'\n'),
+        color:   card.dataset.color,
+        pinned
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    card.dataset.pinned = pinned;
+    btn.classList.toggle('pinned-active', pinned);
+    card.classList.toggle('pinned', pinned);
+    btn.querySelector('svg').setAttribute('fill', pinned ? 'currentColor' : 'none');
+    if (id === currentNoteId) currentPinned = pinned;
+  } catch (err) { toast('Failed: ' + err.message, 'error'); }
+}
+
+// ── Delete note ────────────────────────────────────────────
+async function deleteNote(e, id) {
+  e.stopPropagation();
+  if (!confirm('Delete this note? This cannot be undone.')) return;
+  try {
+    const res  = await fetch('/notepad/notes/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    document.querySelector('.note-card[data-id="' + id + '"]').remove();
+    if (currentNoteId === id) {
+      document.getElementById('editorPanel').classList.add('hidden');
+      currentNoteId = null;
+    }
+    updateNoteCount();
+    toast('Note deleted');
+  } catch (err) { toast('Delete failed: ' + err.message, 'error'); }
+}
+
+// ── Color picker ───────────────────────────────────────────
+function setColor(el, color) {
+  currentColor = color;
+  setActiveSwatch(color);
+  if (currentNoteId) saveNote();
+}
+function setActiveSwatch(color) {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === color));
+}
+
+// ── Toolbar text insert helpers ────────────────────────────
+function insertText(before, after) {
+  const ta    = document.getElementById('editorContent');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sel   = ta.value.substring(start, end);
+  ta.value    = ta.value.substring(0,start) + before + sel + after + ta.value.substring(end);
+  ta.selectionStart = ta.selectionEnd = start + before.length + sel.length;
+  ta.dispatchEvent(new Event('input'));
+  ta.focus();
+}
+function insertLine(prefix) {
+  const ta    = document.getElementById('editorContent');
+  const start = ta.selectionStart;
+  const line  = ta.value.lastIndexOf('\n', start - 1) + 1;
+  ta.value    = ta.value.substring(0, line) + prefix + ta.value.substring(line);
+  ta.selectionStart = ta.selectionEnd = start + prefix.length;
+  ta.dispatchEvent(new Event('input'));
+  ta.focus();
+}
+
+// ── UI helpers ─────────────────────────────────────────────
+function updateSaveStatus(state, msg) {
+  const dot = document.getElementById('saveDot');
+  dot.className = 'save-dot ' + state;
+  document.getElementById('saveStatus').textContent = msg;
+}
+function updateWordCount(text) {
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  document.getElementById('wordCount').textContent = words + ' word' + (words !== 1 ? 's' : '');
+}
+function updateNoteCount() {
+  const count = document.querySelectorAll('.note-card').length;
+  document.getElementById('noteCount').textContent = count + ' note' + (count !== 1 ? 's' : '');
+  if (count === 0) {
+    const grid = document.getElementById('notesGrid');
+    const empty = document.createElement('div');
+    empty.id = 'emptyState'; empty.className = 'empty-notes';
+    empty.innerHTML = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><p>No notes yet.<br/>Click <strong>New Note</strong> to get started.</p>';
+    grid.appendChild(empty);
+  }
+}
+
+function addNoteCard(note) {
+  const grid = document.getElementById('notesGrid');
+  const d = document.createElement('div');
+  d.className = 'note-card' + (note.pinned ? ' pinned' : '');
+  d.dataset.id      = note._id;
+  d.dataset.title   = note.title;
+  d.dataset.content = (note.content || '').replace(/\n/g,'\\n');
+  d.dataset.color   = note.color;
+  d.dataset.pinned  = note.pinned;
+  d.style.cssText   = '--card-color:' + note.color;
+  d.onclick = function() { openNote(this); };
+  d.innerHTML = `
+    <div class="note-title">${escHtml(note.title||'Untitled')}</div>
+    <div class="note-preview">${escHtml(note.content||'')}</div>
+    <div class="note-footer">
+      <span class="note-date">${new Date(note.updatedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span>
+      <div class="note-actions">
+        <button class="note-act-btn pin" onclick="togglePin(event,'${note._id}',this)" title="Pin">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        </button>
+        <button class="note-act-btn del" onclick="deleteNote(event,'${note._id}')" title="Delete">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        </button>
+      </div>
+    </div>`;
+  grid.insertBefore(d, grid.firstChild);
+  updateNoteCount();
+}
+
+function updateNoteCard(note) {
+  const card = document.querySelector('.note-card[data-id="' + note._id + '"]');
+  if (!card) return;
+  card.dataset.title   = note.title;
+  card.dataset.content = (note.content||'').replace(/\n/g,'\\n');
+  card.dataset.color   = note.color;
+  card.style.cssText   = '--card-color:' + note.color;
+  card.querySelector('.note-title').textContent   = note.title || 'Untitled';
+  card.querySelector('.note-preview').textContent = note.content || '';
+  card.querySelector('.note-date').textContent    = new Date(note.updatedAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

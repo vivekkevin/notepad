@@ -1,5 +1,8 @@
 require('dotenv').config();
 
+const mongoose = require('mongoose');
+const Note     = require('./db/Note');
+
 const express  = require('express');
 const path     = require('path');
 const fs       = require('fs');
@@ -338,6 +341,91 @@ app.delete('/delete-model', requireLogin, (req, res) => {
 });
 
 app.get('/api/collections', requireLogin, (_req, res) => res.json(scanModels()));
+
+// ── MongoDB connection ────────────────────────────────────
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/gltf_viewer';
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 5000,   // fail fast if Atlas unreachable
+  socketTimeoutMS:          45000
+})
+  .then(() => console.log('✓ MongoDB Atlas connected'))
+  .catch(err => console.warn('✗ MongoDB not connected (notepad disabled):', err.message));
+
+// ══════════════════════════════════════════════════════════
+// ── NOTEPAD ROUTES (public — protected by notepad password)
+// ══════════════════════════════════════════════════════════
+
+const NOTEPAD_PASSWORD = process.env.NOTEPAD_PASSWORD || 'Master@2025';
+
+// GET /notepad — show password gate or notepad
+app.get('/notepad', (req, res) => {
+  res.render('notepad', { authenticated: false, error: null });
+});
+
+// POST /notepad/auth — verify notepad password
+app.post('/notepad/auth', (req, res) => {
+  const { password } = req.body;
+  if (password === NOTEPAD_PASSWORD) {
+    // Store notepad auth in session (separate from app login)
+    req.session.notepadAuth = true;
+    return res.redirect('/notepad/app');
+  }
+  res.render('notepad', { authenticated: false, error: 'Wrong password.' });
+});
+
+// Notepad session guard
+function requireNotepadAuth(req, res, next) {
+  if (req.session && req.session.notepadAuth) return next();
+  res.redirect('/notepad');
+}
+
+// GET /notepad/app — main notepad UI
+app.get('/notepad/app', requireNotepadAuth, async (req, res) => {
+  try {
+    const notes = await Note.find().sort({ pinned: -1, updatedAt: -1 });
+    res.render('notepad-app', { notes });
+  } catch (err) {
+    res.render('notepad-app', { notes: [], error: err.message });
+  }
+});
+
+// POST /notepad/notes — create note
+app.post('/notepad/notes', requireNotepadAuth, async (req, res) => {
+  try {
+    const { title, content, color, pinned } = req.body;
+    const note = new Note({ title, content, color: color || '#1a1e28', pinned: !!pinned });
+    await note.save();
+    res.json({ success: true, note });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /notepad/notes/:id — update note
+app.put('/notepad/notes/:id', requireNotepadAuth, async (req, res) => {
+  try {
+    const { title, content, color, pinned } = req.body;
+    const note = await Note.findByIdAndUpdate(
+      req.params.id,
+      { title, content, color, pinned, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!note) return res.status(404).json({ error: 'Note not found' });
+    res.json({ success: true, note });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /notepad/notes/:id — delete note
+app.delete('/notepad/notes/:id', requireNotepadAuth, async (req, res) => {
+  try {
+    await Note.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /notepad/logout
+app.post('/notepad/logout', (req, res) => {
+  req.session.notepadAuth = false;
+  res.redirect('/notepad');
+});
 
 app.listen(PORT, () => {
   console.log('GLTF Viewer → http://localhost:' + PORT);

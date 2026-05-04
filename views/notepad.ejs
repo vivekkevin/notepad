@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Notepad — GLTF Viewer</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0f14; --surface: #13161d; --border: #252a38;
+      --accent: #4fffb0; --text: #d4dbe8; --muted: #5a6480;
+      --danger: #ff4f6e; --font: 'IBM Plex Mono', 'Courier New', monospace;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: var(--font); display: flex; align-items: center; justify-content: center;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(79,255,176,0.025) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(79,255,176,0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridMove 25s linear infinite;
+    }
+    @keyframes gridMove { from { background-position: 0 0; } to { background-position: 40px 40px; } }
+
+    .card {
+      position: relative; z-index: 1;
+      width: 360px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 14px;
+      padding: 36px 32px 28px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+      animation: popIn 0.35s cubic-bezier(0.16,1,0.3,1);
+    }
+    @keyframes popIn { from { opacity:0; transform:translateY(20px) scale(0.97); } to { opacity:1; transform:none; } }
+
+    .header {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+    }
+    .notepad-icon {
+      width: 42px; height: 42px;
+      background: rgba(79,255,176,0.08);
+      border: 1px solid rgba(79,255,176,0.2);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .header-text h2 { font-size: 16px; font-weight: 700; color: var(--text); }
+    .header-text p  { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.06em; }
+
+    .divider { height: 1px; background: var(--border); margin-bottom: 22px; }
+
+    .error-box {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,79,110,0.08); border: 1px solid rgba(255,79,110,0.25);
+      border-radius: 6px; padding: 9px 12px; font-size: 11px; color: var(--danger);
+      margin-bottom: 16px; animation: shake 0.3s ease;
+    }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+
+    .field-label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; display: block; }
+    .field-wrap  { position: relative; }
+    .field-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 10px 38px 10px 12px;
+      border-radius: 7px; font-family: var(--font); font-size: 13px;
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,255,176,0.07); }
+    .field-input::placeholder { color: var(--muted); }
+
+    .pw-toggle {
+      position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--muted); cursor: pointer; padding: 3px;
+      transition: color 0.15s;
+    }
+    .pw-toggle:hover { color: var(--text); }
+
+    .btn {
+      width: 100%; padding: 11px; background: var(--accent);
+      border: none; border-radius: 7px; color: #000;
+      font-family: var(--font); font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+      margin-top: 14px; transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.88; }
+
+    .back-link {
+      display: block; text-align: center; margin-top: 16px;
+      font-size: 10px; color: var(--muted); text-decoration: none;
+      letter-spacing: 0.06em; transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="notepad-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4fffb0" stroke-width="1.8">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h2>Private Notepad</h2>
+        <p>Password protected workspace</p>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <% if (error) { %>
+    <div class="error-box">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <%= error %>
+    </div>
+    <% } %>
+
+    <form method="POST" action="/notepad/auth">
+      <label class="field-label" for="npPwd">Master Password</label>
+      <div class="field-wrap">
+        <input class="field-input" type="password" id="npPwd" name="password" placeholder="Enter master password…" autofocus required/>
+        <button type="button" class="pw-toggle" id="npToggle">
+          <svg id="npEye" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <button type="submit" class="btn">Open Notepad →</button>
+    </form>
+
+    <a href="/login" class="back-link">← Back to Login</a>
+  </div>
+
+  <script>
+    const npField = document.getElementById('npPwd');
+    const npToggle = document.getElementById('npToggle');
+    const npEye   = document.getElementById('npEye');
+    let shown = false;
+    npToggle.addEventListener('click', () => {
+      shown = !shown;
+      npField.type = shown ? 'text' : 'password';
+      npEye.innerHTML = shown
+        ? '<line x1="17.94" y1="17.94" x2="22" y2="22"/><line x1="2" y1="2" x2="5.17" y2="5.17"/><path d="M10.73 5.08A10.43 10.43 0 0112 5c7 0 11 7 11 7a13.16 13.16 0 01-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 001 12s4 7 11 7a9.74 9.74 0 005.39-1.61"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    });
+  </script>
+</body>
+</html>
